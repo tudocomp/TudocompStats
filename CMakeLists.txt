@@ -69,9 +69,11 @@ if(STATS_DISABLED)
 endif(STATS_DISABLED)
 
 # Main target
-file(GLOB SOURCE_FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp)
-add_library(tudocomp_stats STATIC ${SOURCE_FILES})
-target_include_directories(tudocomp_stats PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+add_library(tudocomp_stat
+    src/tudocomp_stat/malloc.cpp
+    src/tudocomp_stat/StatPhase.cpp
+)
+target_include_directories(tudocomp_stat PUBLIC include)
 
 # Check if this project is build standalone
 #

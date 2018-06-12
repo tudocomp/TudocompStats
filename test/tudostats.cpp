@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <StatPhase.hpp>
+#include <tudocomp_stat/StatPhase.hpp>
 
 #include <memory>
 
