@@ -1,7 +1,7 @@
 #pragma once
 
 #include <string>
-#include "Json.hpp"
+#include <tudocomp_stat/Json.hpp>
 
 /// \cond INTERNAL
 
@@ -113,4 +113,3 @@ public:
 }
 
 /// \endcond
-
