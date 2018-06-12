@@ -9,6 +9,6 @@ if(STATS_DISABLED)
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DSTATS_DISABLED")
 endif(STATS_DISABLED)
 
-file(GLOB SOURCE_FILES src/*.cpp)
+file(GLOB SOURCE_FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp)
 add_library(tudocomp_stats STATIC ${SOURCE_FILES})
-target_include_directories(tudocomp_stats PUBLIC include)
+target_include_directories(tudocomp_stats PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
