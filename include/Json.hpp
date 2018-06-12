@@ -45,6 +45,9 @@ const std::string quote_escape = "\\\"";
 
 template<>
 inline void TValue<char>::str(std::ostream& s, unsigned int level) const {
+    // TODO: Check usage of level
+    (void) level;
+
     s << quote_char;
 
     if(m_value == quote_char) {
