@@ -1,5 +1,5 @@
-#include "../include/malloc.hpp"
-#include "../include/StatPhase.hpp"
+#include <tudocomp_stat/malloc.hpp>
+#include <tudocomp_stat/StatPhase.hpp>
 
 #ifndef STATS_DISABLED
 
@@ -16,4 +16,3 @@ void malloc_callback::on_free(size_t bytes) {
 }
 
 #endif
-
