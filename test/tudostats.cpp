@@ -18,6 +18,7 @@ TEST(Tudostats, empty_phase) {
         auto y = malloc(128);
         *(char*)y = 128;
         free(y);
+        std::vector<char> z { 1, 2, 3, 4 };
     }
     root.to_json().str(std::cout);
     std::cout << std::endl;
