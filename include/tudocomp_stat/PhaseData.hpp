@@ -79,7 +79,7 @@ public:
 
     inline json to_json() const {
         json obj;
-        obj["title"] = m_title;
+        obj["title"] = std::string(m_title);
         obj["timeStart"] = time_start;
         obj["timeEnd"] = time_end;
         obj["memOff"] = mem_off;
