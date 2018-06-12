@@ -49,7 +49,7 @@ private:
         timespec t;
         get_monotonic_time(&t);
 
-        return t.tv_sec * 1000L + double(t.tv_nsec) / double(1000000L);
+        return double(t.tv_sec * 1000L) + double(t.tv_nsec) / double(1000000L);
     }
 
     StatPhase* m_parent = nullptr;
