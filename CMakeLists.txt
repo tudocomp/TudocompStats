@@ -69,7 +69,7 @@ if(STATS_DISABLED)
 endif(STATS_DISABLED)
 
 # Main target
-add_library(tudocomp_stat
+add_library(tudocomp_stat SHARED
     src/tudocomp_stat/malloc.cpp
     src/tudocomp_stat/StatPhase.cpp
 )
