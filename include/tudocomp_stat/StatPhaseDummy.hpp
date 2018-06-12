@@ -3,7 +3,7 @@
 #include <cstring>
 #include <ctime>
 
-#include <tudocomp_stat/Json.hpp>
+#include <tudocomp_stat/json.hpp>
 
 /// \cond INTERNAL
 
@@ -66,8 +66,8 @@ public:
     inline void log_stat(const char* key, const T& value) {
     }
 
-    inline json::Object to_json() {
-        return json::Object();
+    inline json to_json() {
+        return json();
     }
 };
 

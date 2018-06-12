@@ -1,11 +1,12 @@
 #pragma once
 
 #include <string>
-#include <tudocomp_stat/Json.hpp>
+#include <tudocomp_stat/json.hpp>
 
 /// \cond INTERNAL
 
 namespace tdc {
+    using json = nlohmann::json;
 
 class PhaseData {
 private:
@@ -76,35 +77,33 @@ public:
         }
     }
 
-    inline json::Object to_json() const {
-        json::Object obj;
-        obj.set("title",     m_title);
-        obj.set("timeStart", time_start);
-        obj.set("timeEnd",   time_end);
-        obj.set("memOff",    mem_off);
-        obj.set("memPeak",   mem_peak);
-        obj.set("memFinal",  mem_current);
+    inline json to_json() const {
+        json obj;
+        obj["title"] = m_title;
+        obj["timeStart"] = time_start;
+        obj["timeEnd"] = time_end;
+        obj["memOff"] = mem_off;
+        obj["memPeak"] = mem_peak;
+        obj["memFinal"] = mem_current;
 
-        json::Array stats;
+        json stats = json::array();
         keyval* kv = first_stat;
         while(kv) {
-            json::Object pair;
-            pair.set("key", std::string(kv->key));
-            pair.set("value", std::string(kv->val));
-            stats.add(pair);
+            json pair;
+            pair["key"] = std::string(kv->key);
+            pair["value"] = std::string(kv->val);
+            stats.push_back(pair);
             kv = kv->next;
         }
-        obj.set("stats", stats);
+        obj["stats"] = stats;
 
-        json::Array sub;
-
+        json sub = json::array();
         PhaseData* child = first_child;
         while(child) {
-            sub.add(child->to_json());
+            sub.push_back(child->to_json());
             child = child->next_sibling;
         }
-
-        obj.set("sub", sub);
+        obj["sub"] = sub;
 
         return obj;
     }

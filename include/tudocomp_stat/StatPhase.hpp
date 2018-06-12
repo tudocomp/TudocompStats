@@ -4,7 +4,7 @@
 #include <ctime>
 #include <string>
 
-#include <tudocomp_stat/Json.hpp>
+#include <tudocomp_stat/json.hpp>
 
 #ifndef STATS_DISABLED
 
@@ -308,15 +308,15 @@ public:
     /// It contains the subtree of phases beneath this phase.
     ///
     /// \return the \ref json::Object containing the JSON representation
-    inline json::Object to_json() {
+    inline json to_json() {
         if (!m_disabled) {
             m_data->time_end = current_time_millis();
             pause();
-            json::Object obj = m_data->to_json();
+            json obj = m_data->to_json();
             resume();
             return obj;
         } else {
-            return json::Object();
+            return json();
         }
     }
 };
