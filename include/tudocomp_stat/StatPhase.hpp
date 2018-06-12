@@ -45,11 +45,11 @@ class StatPhase {
 private:
     static StatPhase* s_current;
 
-    inline static unsigned long current_time_millis() {
+    inline static double current_time_millis() {
         timespec t;
         get_monotonic_time(&t);
 
-        return t.tv_sec * 1000L + t.tv_nsec / 1000000L;
+        return t.tv_sec * 1000L + double(t.tv_nsec) / double(1000000L);
     }
 
     StatPhase* m_parent = nullptr;

@@ -28,8 +28,8 @@ private:
     char m_title[STR_BUFFER_SIZE];
 
 public:
-    unsigned long time_start;
-    unsigned long time_end;
+    double time_start;
+    double time_end;
     ssize_t mem_off;
     ssize_t mem_current;
     ssize_t mem_peak;
