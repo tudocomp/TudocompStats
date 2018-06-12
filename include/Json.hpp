@@ -33,6 +33,8 @@ public:
 
     virtual inline void str(
         std::ostream& s, unsigned int level = 0) const override {
+        // TODO: Check usage of level
+        (void) level;
 
         s << m_value;
     }
@@ -67,10 +69,13 @@ inline TValue<std::string>::TValue(const std::string& value) {
         m_value.replace(x, 1, quote_escape);
         pos = x+2;
     }
-};
+}
 
 template<>
 inline void TValue<std::string>::str(std::ostream& s, unsigned int level) const {
+    // TODO: Check usage of level
+    (void) level;
+
     s << quote_char << m_value << quote_char;
 }
 
