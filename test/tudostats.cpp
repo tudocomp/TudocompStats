@@ -18,9 +18,9 @@ TEST(Tudostats, empty_phase) {
     auto j = root.to_json();
     std::cout << j.dump(4) << std::endl;
 
-    ASSERT_EQ(j["memFinal"], 0);
-    ASSERT_EQ(j["memOff"], 0);
-    ASSERT_EQ(j["memPeak"], 0);
+    ASSERT_EQ((int)j["memFinal"], 0);
+    ASSERT_EQ((int)j["memOff"], 0);
+    ASSERT_EQ((int)j["memPeak"], 0);
 }
 
 TEST(Tudostats, phase_root100) {
@@ -31,9 +31,9 @@ TEST(Tudostats, phase_root100) {
     auto j = root.to_json();
     std::cout << j.dump(4) << std::endl;
 
-    ASSERT_EQ(j["memFinal"], 0);
-    ASSERT_EQ(j["memOff"], 0);
-    ASSERT_EQ(j["memPeak"], 100);
+    ASSERT_EQ((int)j["memFinal"], 0);
+    ASSERT_EQ((int)j["memOff"], 0);
+    ASSERT_EQ((int)j["memPeak"], 100);
 }
 
 TEST(Tudostats, phase_root400_sub2_200) {
@@ -55,9 +55,9 @@ TEST(Tudostats, phase_root400_sub2_200) {
     auto j = root.to_json();
     std::cout << j.dump(4) << std::endl;
 
-    ASSERT_EQ(j["memFinal"], 0);
-    ASSERT_EQ(j["memOff"], 0);
-    ASSERT_EQ(j["memPeak"], 500);
+    ASSERT_EQ((int)j["memFinal"], 0);
+    ASSERT_EQ((int)j["memOff"], 0);
+    ASSERT_EQ((int)j["memPeak"], 500);
 
     auto s1 = j["sub"][0];
     ASSERT_EQ(int(s1["memFinal"]), 0);
@@ -84,9 +84,9 @@ TEST(Tudostats, phaseroot_400_sub1_100_cross_mem) {
     auto j = root.to_json();
     std::cout << j.dump(4) << std::endl;
 
-    ASSERT_EQ(j["memFinal"], 0);
-    ASSERT_EQ(j["memOff"], 0);
-    ASSERT_EQ(j["memPeak"], 400);
+    ASSERT_EQ((int)j["memFinal"], 0);
+    ASSERT_EQ((int)j["memOff"], 0);
+    ASSERT_EQ((int)j["memPeak"], 400);
 
     auto s1 = j["sub"][0];
     ASSERT_EQ(int(s1["memFinal"]), 100);
@@ -100,24 +100,30 @@ TEST(Tudostats, phaseroot_400_sub1_100_cross_mem) {
 }
 
 TEST(Tudostats, logging) {
+    std::string giant(1024, 'a');
+
     tdc::StatPhase root("Root");
     {
         auto x1 = std::make_unique<char[]>(300);
         {
             tdc::StatPhase sub1("sub1");
-            auto cross_phase = std::make_unique<char[]>(100);
-            sub1.log_stat("hello", 143);
-            sub1.log_stat("world", std::string("text ") + "612");
-            sub1.split("sub2");
+            {
+                auto cross_phase = std::make_unique<char[]>(100);
+                sub1.log_stat("hello", 143);
+                sub1.log_stat("world", std::string("text ") + "612");
+                sub1.log_stat(giant.c_str(), giant);
+                sub1.split("foo");
+            }
+            sub1.split(giant.c_str());
         }
         auto x2 = std::make_unique<char[]>(100);
     }
     auto j = root.to_json();
     std::cout << j.dump(4) << std::endl;
 
-    ASSERT_EQ(j["memFinal"], 0);
-    ASSERT_EQ(j["memOff"], 0);
-    ASSERT_EQ(j["memPeak"], 400);
+    ASSERT_EQ(int(j["memFinal"]), 0);
+    ASSERT_EQ(int(j["memOff"]), 0);
+    ASSERT_EQ(int(j["memPeak"]), 400);
 
     auto s1 = j["sub"][0];
     ASSERT_EQ(int(s1["memFinal"]), 100);

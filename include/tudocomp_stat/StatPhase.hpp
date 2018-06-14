@@ -45,6 +45,17 @@ inline void get_monotonic_time(struct timespec *ts){
 class StatPhase {
 private:
     static StatPhase* s_current;
+    static uint16_t s_pause_guard_state;
+    static bool s_track_memory;
+
+    struct pause_guard {
+        inline pause_guard(pause_guard const&) = delete;
+        inline pause_guard() { s_pause_guard_state++; }
+        inline ~pause_guard() { s_pause_guard_state--; }
+        inline static bool is_paused() {
+            return (s_pause_guard_state + uint16_t(s_track_memory)) != 0;
+        }
+    };
 
     inline static double current_time_millis() {
         timespec t;
@@ -56,11 +67,12 @@ private:
     StatPhase* m_parent = nullptr;
     std::unique_ptr<PhaseData> m_data;
 
-    bool m_track_memory = false;
     bool m_disabled = false;
 
     inline void track_alloc_internal(size_t bytes) {
-        if(m_track_memory) {
+        if(!pause_guard::is_paused()) {
+            if (!m_data) abort(); // better not use DCHECK, in case it allocates
+
             m_data->mem_current += bytes;
             m_data->mem_peak = std::max(m_data->mem_peak, m_data->mem_current);
             if(m_parent) m_parent->track_alloc_internal(bytes);
@@ -68,27 +80,29 @@ private:
     }
 
     inline void track_free_internal(size_t bytes) {
-        if(m_track_memory) {
+        if(!pause_guard::is_paused()) {
+            if (!m_data) abort(); // better not use DCHECK, in case it allocates
+
             m_data->mem_current -= bytes;
             if(m_parent) m_parent->track_free_internal(bytes);
         }
     }
 
     inline void pause() {
-        m_track_memory = false;
+        s_track_memory = false;
     }
 
     inline void resume() {
-        m_track_memory = true;
+        s_track_memory = true;
     }
 
-    inline void init(const char* title) {
+    inline void init(char const* title) {
+        pause_guard guard;
+
         m_parent = s_current;
 
-        if(m_parent) m_parent->pause();
         m_data = std::make_unique<PhaseData>();
-        if(m_parent) m_parent->resume();
-        m_data->title(title);
+        m_data->title(std::string(title));
 
         m_data->mem_off = m_parent ? m_parent->m_data->mem_current : 0;
         m_data->mem_current = 0;
@@ -106,6 +120,8 @@ private:
     /// or null if there is no parent.
     inline PhaseData* finish() {
         m_data->time_end = current_time_millis();
+
+        pause_guard guard;
         PhaseData* r = nullptr;
 
         if(m_parent) {
@@ -227,18 +243,7 @@ public:
     ///
     /// \param title the phase title
     inline StatPhase(const char* title) {
-        pause();
         init(title);
-        resume();
-    }
-
-    /// \brief Creates a new statistics phase.
-    ///
-    /// The new phase is started as a sub phase of the current phase and will
-    /// immediately become the current phase.
-    ///
-    /// \param str the phase title
-    inline StatPhase(const std::string& str) : StatPhase(str.c_str()) {
     }
 
     /// \brief Destroys and ends the phase.
@@ -246,7 +251,6 @@ public:
     /// The phase's parent phase, if any, will become the current phase.
     inline ~StatPhase() {
         if (!m_disabled) {
-            pause();
             finish();
         }
     }
@@ -259,27 +263,13 @@ public:
     /// \param new_title the new phase title
     inline void split(const char* new_title) {
         if (!m_disabled) {
-            pause();
-
             PhaseData* old_data = finish();
 
             init(new_title);
             if(old_data) {
                 m_data->mem_off = old_data->mem_off + old_data->mem_current;
             }
-
-            resume();
         }
-    }
-
-    /// \brief Starts a new phase as a sibling, reusing the same object.
-    ///
-    /// This function behaves exactly as if the current phase was ended and
-    /// a new phases was started immediately after.
-    ///
-    /// \param new_title the new phase title
-    inline void split(const std::string& new_title) {
-        split(new_title.c_str());
     }
 
     /// \brief Logs a user statistic for this phase.
@@ -292,9 +282,8 @@ public:
     template<typename T>
     inline void log_stat(const char* key, const T& value) {
         if (!m_disabled) {
-            pause();
+            pause_guard guard;
             m_data->log_stat(key, value);
-            resume();
         }
     }
 
@@ -304,11 +293,10 @@ public:
     ///
     /// \return the \ref json::Object containing the JSON representation
     inline json to_json() {
+        pause_guard guard;
         if (!m_disabled) {
             m_data->time_end = current_time_millis();
-            pause();
             json obj = m_data->to_json();
-            resume();
             return obj;
         } else {
             return json();
