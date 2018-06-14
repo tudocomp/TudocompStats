@@ -13,18 +13,16 @@ namespace tdc {
 
 class PhaseData {
 private:
-    static constexpr size_t STR_BUFFER_SIZE = 64;
-
     struct keyval {
         std::unique_ptr<keyval> next;
-        char key[STR_BUFFER_SIZE];
-        char val[STR_BUFFER_SIZE];
+        std::string key;
+        std::string val;
 
         inline keyval() {
         }
     };
 
-    char m_title[STR_BUFFER_SIZE];
+    std::string m_title;
 
 public:
     double time_start;
@@ -48,23 +46,23 @@ public:
         if(next_sibling) delete next_sibling;
     }
 
-    inline const char* title() const {
+    inline std::string const& title() const {
         return m_title;
     }
 
-    inline void title(const char* title) {
-        strncpy(m_title, title, STR_BUFFER_SIZE);
+    inline void title(std::string const& title) {
+        m_title = title;
     }
 
     template<typename T>
-    inline void log_stat(const char* key, const T& value) {
+    inline void log_stat(std::string const& key, const T& value) {
         std::unique_ptr<keyval> kv = std::make_unique<keyval>();
 
         std::stringstream ss;
         ss << value;
 
-        strncpy(kv->key, key, STR_BUFFER_SIZE);
-        strncpy(kv->val, ss.str().c_str(), STR_BUFFER_SIZE);
+        kv->key = key;
+        kv->val = ss.str();
 
         if(first_stat) {
             keyval* last = first_stat.get();
@@ -79,7 +77,7 @@ public:
 
     inline json to_json() const {
         json obj;
-        obj["title"] = std::string(m_title);
+        obj["title"] = m_title;
         obj["timeStart"] = time_start;
         obj["timeEnd"] = time_end;
         obj["memOff"] = mem_off;
@@ -90,8 +88,8 @@ public:
         keyval* kv = first_stat.get();
         while(kv) {
             json pair;
-            pair["key"] = std::string(kv->key);
-            pair["value"] = std::string(kv->val);
+            pair["key"] = kv->key;
+            pair["value"] = kv->val;
             stats.push_back(pair);
             kv = kv->next.get();
         }
