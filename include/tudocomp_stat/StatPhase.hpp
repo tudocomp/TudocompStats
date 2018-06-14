@@ -59,10 +59,6 @@ private:
     bool m_track_memory = false;
     bool m_disabled = false;
 
-    inline void append_child(std::unique_ptr<PhaseData>&& data) {
-        m_data->append_child(std::move(data));
-    }
-
     inline void track_alloc_internal(size_t bytes) {
         if(m_track_memory) {
             m_data->mem_current += bytes;
@@ -115,7 +111,7 @@ private:
         if(m_parent) {
             // add data to parent's data
             r = m_data.get();
-            m_parent->append_child(std::move(m_data));
+            m_parent->m_data->append_child(std::move(m_data));
         } else {
             // if this was the root, delete data
             m_data.reset();

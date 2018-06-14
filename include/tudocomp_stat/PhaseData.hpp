@@ -11,6 +11,8 @@
 namespace tdc {
     using json = nlohmann::json;
 
+class StatPhase;
+
 class PhaseData {
 private:
     struct keyval {
@@ -28,7 +30,7 @@ private:
     std::unique_ptr<PhaseData> first_child;
     std::unique_ptr<PhaseData> next_sibling;
 
-public:
+    friend class StatPhase;
     inline void append_child(std::unique_ptr<PhaseData>&& data) {
         if(first_child) {
             PhaseData* last = first_child.get();
@@ -40,7 +42,7 @@ public:
             first_child = std::move(data);
         }
     }
-
+public:
     double time_start;
     double time_end;
     ssize_t mem_off;
