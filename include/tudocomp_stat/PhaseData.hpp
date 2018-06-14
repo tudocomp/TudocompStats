@@ -66,7 +66,7 @@ public:
         if(first_stat) {
             keyval* last = first_stat.get();
             while(last->next) {
-                last = last->next;
+                last = last->next.get();
             }
             last->next = std::move(kv);
         } else {

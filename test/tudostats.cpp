@@ -98,3 +98,33 @@ TEST(Tudostats, phaseroot_400_sub1_100_cross_mem) {
     ASSERT_EQ(int(s2["memOff"]), 400);
     ASSERT_EQ(int(s2["memPeak"]), 0);
 }
+
+TEST(Tudostats, logging) {
+    tdc::StatPhase root("Root");
+    {
+        auto x1 = std::make_unique<char[]>(300);
+        {
+            tdc::StatPhase sub1("sub1");
+            auto cross_phase = std::make_unique<char[]>(100);
+            sub1.split("sub2");
+            sub1.log_stat("hello", 142);
+        }
+        auto x2 = std::make_unique<char[]>(100);
+    }
+    auto j = root.to_json();
+    std::cout << j.dump(4) << std::endl;
+
+    ASSERT_EQ(j["memFinal"], 0);
+    ASSERT_EQ(j["memOff"], 0);
+    ASSERT_EQ(j["memPeak"], 400);
+
+    auto s1 = j["sub"][0];
+    ASSERT_EQ(int(s1["memFinal"]), 100);
+    ASSERT_EQ(int(s1["memOff"]), 300);
+    ASSERT_EQ(int(s1["memPeak"]), 100);
+
+    auto s2 = j["sub"][1];
+    ASSERT_EQ(int(s2["memFinal"]), -100);
+    ASSERT_EQ(int(s2["memOff"]), 400);
+    ASSERT_EQ(int(s2["memPeak"]), 0);
+}
