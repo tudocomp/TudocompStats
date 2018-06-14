@@ -50,12 +50,12 @@ public:
         return m_title;
     }
 
-    inline void title(std::string const& title) {
-        m_title = title;
+    inline void title(std::string&& title) {
+        m_title = std::move(title);
     }
 
     template<typename T>
-    inline void log_stat(std::string const& key, const T& value) {
+    inline void log_stat(std::string&& key, const T& value) {
         std::unique_ptr<keyval> kv = std::make_unique<keyval>();
 
         std::stringstream ss;
