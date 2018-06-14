@@ -24,26 +24,30 @@ private:
 
     std::string m_title;
 
+    std::unique_ptr<keyval> first_stat;
+    std::unique_ptr<PhaseData> first_child;
+    std::unique_ptr<PhaseData> next_sibling;
+
 public:
+    inline void append_child(std::unique_ptr<PhaseData>&& data) {
+        if(first_child) {
+            PhaseData* last = first_child.get();
+            while(last->next_sibling) {
+                last = last->next_sibling.get();
+            }
+            last->next_sibling = std::move(data);
+        } else {
+            first_child = std::move(data);
+        }
+    }
+
     double time_start;
     double time_end;
     ssize_t mem_off;
     ssize_t mem_current;
     ssize_t mem_peak;
 
-    std::unique_ptr<keyval> first_stat;
-
-    PhaseData* first_child;
-    PhaseData* next_sibling;
-
-    inline PhaseData()
-        : first_child(nullptr),
-          next_sibling(nullptr) {
-    }
-
-    inline ~PhaseData() {
-        if(first_child) delete first_child;
-        if(next_sibling) delete next_sibling;
+    inline PhaseData() {
     }
 
     inline std::string const& title() const {
@@ -96,10 +100,10 @@ public:
         obj["stats"] = stats;
 
         json sub = json::array();
-        PhaseData* child = first_child;
+        PhaseData* child = first_child.get();
         while(child) {
             sub.push_back(child->to_json());
-            child = child->next_sibling;
+            child = child->next_sibling.get();
         }
         obj["sub"] = sub;
 

@@ -3,6 +3,7 @@
 #include <cstring>
 #include <ctime>
 #include <string>
+#include <memory>
 
 #include <tudocomp_stat/json.hpp>
 
@@ -53,21 +54,13 @@ private:
     }
 
     StatPhase* m_parent = nullptr;
-    PhaseData* m_data = nullptr;
+    std::unique_ptr<PhaseData> m_data;
 
     bool m_track_memory = false;
     bool m_disabled = false;
 
-    inline void append_child(PhaseData* data) {
-        if(m_data->first_child) {
-            PhaseData* last = m_data->first_child;
-            while(last->next_sibling) {
-                last = last->next_sibling;
-            }
-            last->next_sibling = data;
-        } else {
-            m_data->first_child = data;
-        }
+    inline void append_child(std::unique_ptr<PhaseData>&& data) {
+        m_data->append_child(std::move(data));
     }
 
     inline void track_alloc_internal(size_t bytes) {
@@ -97,7 +90,7 @@ private:
         m_parent = s_current;
 
         if(m_parent) m_parent->pause();
-        m_data = new PhaseData();
+        m_data = std::make_unique<PhaseData>();
         if(m_parent) m_parent->resume();
         m_data->title(title);
 
@@ -111,20 +104,27 @@ private:
         s_current = this;
     }
 
-    inline void finish() {
+    /// Finish the current Phase
+    ///
+    /// Returns a pointer to the PhaseData if it got added to a parent,
+    /// or null if there is no parent.
+    inline PhaseData* finish() {
         m_data->time_end = current_time_millis();
+        PhaseData* r = nullptr;
 
         if(m_parent) {
             // add data to parent's data
-            m_parent->append_child(m_data);
+            r = m_data.get();
+            m_parent->append_child(std::move(m_data));
         } else {
             // if this was the root, delete data
-            delete m_data;
-            m_data = nullptr;
+            m_data.reset();
         }
 
         // pop parent
         s_current = m_parent;
+
+        return r;
     }
 
 public:
@@ -265,8 +265,7 @@ public:
         if (!m_disabled) {
             pause();
 
-            finish();
-            PhaseData* old_data = m_data;
+            PhaseData* old_data = finish();
 
             init(new_title);
             if(old_data) {
