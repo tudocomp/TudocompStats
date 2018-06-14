@@ -44,33 +44,41 @@ inline void get_monotonic_time(struct timespec *ts){
 /// use in the tudocomp charter for visualization or third party applications.
 class StatPhase {
 private:
-    static StatPhase* s_current;
-    static uint16_t s_pause_guard_state;
-    static bool s_track_memory;
+    //////////////////////////////////////////
+    // Memory tracking
+    //////////////////////////////////////////
 
-    struct pause_guard {
-        inline pause_guard(pause_guard const&) = delete;
-        inline pause_guard() { s_pause_guard_state++; }
-        inline ~pause_guard() { s_pause_guard_state--; }
+    static uint16_t s_suppress_memory_tracking_state;
+    static bool s_user_disabled_memory_tracking;
+
+    struct suppress_memory_tracking {
+        inline suppress_memory_tracking(suppress_memory_tracking const&) = delete;
+        inline suppress_memory_tracking() {
+            s_suppress_memory_tracking_state++;
+        }
+        inline ~suppress_memory_tracking() {
+            s_suppress_memory_tracking_state--;
+        }
         inline static bool is_paused() {
-            return (s_pause_guard_state + uint16_t(s_track_memory)) != 0;
+            return s_suppress_memory_tracking_state != 0;
         }
     };
 
-    inline static double current_time_millis() {
-        timespec t;
-        get_monotonic_time(&t);
-
-        return double(t.tv_sec * 1000L) + double(t.tv_nsec) / double(1000000L);
+    inline void user_memory_pause() {
+        s_user_disabled_memory_tracking = true;
     }
 
-    StatPhase* m_parent = nullptr;
-    std::unique_ptr<PhaseData> m_data;
+    inline void user_memory_resume() {
+        s_user_disabled_memory_tracking = false;
+    }
 
-    bool m_disabled = false;
+    inline bool currently_tracking_memory() {
+        return !suppress_memory_tracking::is_paused()
+            && !s_user_disabled_memory_tracking;
+    }
 
     inline void track_alloc_internal(size_t bytes) {
-        if(!pause_guard::is_paused()) {
+        if(currently_tracking_memory()) {
             if (!m_data) abort(); // better not use DCHECK, in case it allocates
 
             m_data->mem_current += bytes;
@@ -80,7 +88,7 @@ private:
     }
 
     inline void track_free_internal(size_t bytes) {
-        if(!pause_guard::is_paused()) {
+        if(currently_tracking_memory()) {
             if (!m_data) abort(); // better not use DCHECK, in case it allocates
 
             m_data->mem_current -= bytes;
@@ -88,16 +96,25 @@ private:
         }
     }
 
-    inline void pause() {
-        s_track_memory = false;
-    }
+    //////////////////////////////////////////
+    // Other StatPhase state
+    //////////////////////////////////////////
 
-    inline void resume() {
-        s_track_memory = true;
+    static StatPhase* s_current;
+    StatPhase* m_parent = nullptr;
+    std::unique_ptr<PhaseData> m_data;
+
+    bool m_disabled = false;
+
+    inline static double current_time_millis() {
+        timespec t;
+        get_monotonic_time(&t);
+
+        return double(t.tv_sec * 1000L) + double(t.tv_nsec) / double(1000000L);
     }
 
     inline void init(char const* title) {
-        pause_guard guard;
+        suppress_memory_tracking guard;
 
         m_parent = s_current;
 
@@ -121,7 +138,7 @@ private:
     inline PhaseData* finish() {
         m_data->time_end = current_time_millis();
 
-        pause_guard guard;
+        suppress_memory_tracking guard;
         PhaseData* r = nullptr;
 
         if(m_parent) {
@@ -208,7 +225,7 @@ public:
     /// Memory tracking is paused until \ref pause_tracking is called or the
     /// phase object is destroyed.
     inline static void pause_tracking() {
-        if(s_current) s_current->pause();
+        if(s_current) s_current->user_memory_pause();
     }
 
     /// \brief Resumes the tracking of memory allocations in the current phase.
@@ -216,7 +233,7 @@ public:
     /// This only has an effect if tracking has previously been paused using
     /// \ref pause_tracking.
     inline static void resume_tracking() {
-        if(s_current) s_current->resume();
+        if(s_current) s_current->user_memory_resume();
     }
 
     /// \brief Logs a user statistic for the current phase.
@@ -282,7 +299,7 @@ public:
     template<typename T>
     inline void log_stat(const char* key, const T& value) {
         if (!m_disabled) {
-            pause_guard guard;
+            suppress_memory_tracking guard;
             m_data->log_stat(key, value);
         }
     }
@@ -293,7 +310,7 @@ public:
     ///
     /// \return the \ref json::Object containing the JSON representation
     inline json to_json() {
-        pause_guard guard;
+        suppress_memory_tracking guard;
         if (!m_disabled) {
             m_data->time_end = current_time_millis();
             json obj = m_data->to_json();
