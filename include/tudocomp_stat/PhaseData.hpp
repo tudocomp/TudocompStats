@@ -60,8 +60,11 @@ public:
     inline void log_stat(const char* key, const T& value) {
         std::unique_ptr<keyval> kv = std::make_unique<keyval>();
 
+        std::stringstream ss;
+        ss << value;
+
         strncpy(kv->key, key, STR_BUFFER_SIZE);
-        strncpy(kv->val, std::to_string(value).c_str(), STR_BUFFER_SIZE);
+        strncpy(kv->val, ss.str().c_str(), STR_BUFFER_SIZE);
 
         if(first_stat) {
             keyval* last = first_stat.get();

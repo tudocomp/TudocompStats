@@ -107,7 +107,8 @@ TEST(Tudostats, logging) {
             tdc::StatPhase sub1("sub1");
             auto cross_phase = std::make_unique<char[]>(100);
             sub1.split("sub2");
-            sub1.log_stat("hello", 142);
+            sub1.log_stat("hello", 143);
+            sub1.log_stat("world", std::string("text ") + "612");
         }
         auto x2 = std::make_unique<char[]>(100);
     }
