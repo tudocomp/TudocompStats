@@ -1,6 +1,9 @@
 #pragma once
 
 #include <string>
+#include <memory>
+#include <sstream>
+
 #include <tudocomp_stat/json.hpp>
 
 /// \cond INTERNAL
@@ -13,15 +16,11 @@ private:
     static constexpr size_t STR_BUFFER_SIZE = 64;
 
     struct keyval {
-        keyval* next;
+        std::unique_ptr<keyval> next;
         char key[STR_BUFFER_SIZE];
         char val[STR_BUFFER_SIZE];
 
-        inline keyval() : next(nullptr) {
-        }
-
-        ~keyval() {
-            if(next) delete next;
+        inline keyval() {
         }
     };
 
@@ -34,19 +33,17 @@ public:
     ssize_t mem_current;
     ssize_t mem_peak;
 
-    keyval* first_stat;
+    std::unique_ptr<keyval> first_stat;
 
     PhaseData* first_child;
     PhaseData* next_sibling;
 
     inline PhaseData()
-        : first_stat(nullptr),
-          first_child(nullptr),
+        : first_child(nullptr),
           next_sibling(nullptr) {
     }
 
     inline ~PhaseData() {
-        if(first_stat) delete first_stat;
         if(first_child) delete first_child;
         if(next_sibling) delete next_sibling;
     }
@@ -61,19 +58,19 @@ public:
 
     template<typename T>
     inline void log_stat(const char* key, const T& value) {
-        keyval* kv = new keyval();
+        std::unique_ptr<keyval> kv = std::make_unique<keyval>();
 
         strncpy(kv->key, key, STR_BUFFER_SIZE);
         strncpy(kv->val, std::to_string(value).c_str(), STR_BUFFER_SIZE);
 
         if(first_stat) {
-            keyval* last = first_stat;
+            keyval* last = first_stat.get();
             while(last->next) {
                 last = last->next;
             }
-            last->next = kv;
+            last->next = std::move(kv);
         } else {
-            first_stat = kv;
+            first_stat = std::move(kv);
         }
     }
 
@@ -87,13 +84,13 @@ public:
         obj["memFinal"] = mem_current;
 
         json stats = json::array();
-        keyval* kv = first_stat;
+        keyval* kv = first_stat.get();
         while(kv) {
             json pair;
             pair["key"] = std::string(kv->key);
             pair["value"] = std::string(kv->val);
             stats.push_back(pair);
-            kv = kv->next;
+            kv = kv->next.get();
         }
         obj["stats"] = stats;
 
