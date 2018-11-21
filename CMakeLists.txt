@@ -69,10 +69,18 @@ if(STATS_DISABLED)
 endif(STATS_DISABLED)
 
 # Main target
-add_library(tudocomp_stat SHARED
-    src/tudocomp_stat/malloc.cpp
-    src/tudocomp_stat/StatPhase.cpp
-)
+if(DYNAMIC)
+    add_library(tudocomp_stat SHARED
+        src/tudocomp_stat/malloc.cpp
+        src/tudocomp_stat/StatPhase.cpp
+    )
+else()
+    add_library(tudocomp_stat STATIC
+        src/tudocomp_stat/malloc.cpp
+        src/tudocomp_stat/StatPhase.cpp
+    )
+endif()
+
 target_include_directories(tudocomp_stat PUBLIC include)
 
 # Check if this project is build standalone
