@@ -113,13 +113,13 @@ private:
         return double(t.tv_sec * 1000L) + double(t.tv_nsec) / double(1000000L);
     }
 
-    inline void init(char const* title) {
+    inline void init(std::string&& title) {
         suppress_memory_tracking guard;
 
         m_parent = s_current;
 
         m_data = std::make_unique<PhaseData>();
-        m_data->title(std::string(title));
+        m_data->title(std::move(title));
 
         m_data->mem_off = m_parent ? m_parent->m_data->mem_current : 0;
         m_data->mem_current = 0;
@@ -169,10 +169,10 @@ public:
     /// \param func  the lambda to execute
     /// \return the return value of the lambda
     template<typename F>
-    inline static auto wrap(const char* title, F func) ->
+    inline static auto wrap(std::string&& title, F func) ->
         typename std::result_of<F(StatPhase&)>::type {
 
-        StatPhase phase(title);
+        StatPhase phase(std::move(title));
         return func(phase);
     }
 
@@ -188,10 +188,10 @@ public:
     /// \param func  the lambda to execute
     /// \return the return value of the lambda
     template<typename F>
-    inline static auto wrap(const char* title, F func) ->
+    inline static auto wrap(std::string&& title, F func) ->
         typename std::result_of<F()>::type {
 
-        StatPhase phase(title);
+        StatPhase phase(std::move(title));
         return func();
     }
 
@@ -244,8 +244,8 @@ public:
     /// \param key the statistic key or name
     /// \param value the value to log (will be converted to a string)
     template<typename T>
-    inline static void log(const char* key, const T& value) {
-        if(s_current) s_current->log_stat(key, value);
+    inline static void log(std::string&& key, const T& value) {
+        if(s_current) s_current->log_stat(std::move(key), value);
     }
 
     /// \brief Creates a inert statistics phase without any effect.
@@ -259,8 +259,8 @@ public:
     /// immediately become the current phase.
     ///
     /// \param title the phase title
-    inline StatPhase(const char* title) {
-        init(title);
+    inline StatPhase(std::string&& title) {
+        init(std::move(title));
     }
 
     /// \brief Destroys and ends the phase.
@@ -278,11 +278,11 @@ public:
     /// a new phases was started immediately after.
     ///
     /// \param new_title the new phase title
-    inline void split(const char* new_title) {
+    inline void split(std::string&& new_title) {
         if (!m_disabled) {
             PhaseData* old_data = finish();
 
-            init(new_title);
+            init(std::move(new_title));
             if(old_data) {
                 m_data->mem_off = old_data->mem_off + old_data->mem_current;
             }
@@ -297,10 +297,10 @@ public:
     /// \param key the statistic key or name
     /// \param value the value to log (will be converted to a string)
     template<typename T>
-    inline void log_stat(const char* key, const T& value) {
+    inline void log_stat(std::string&& key, const T& value) {
         if (!m_disabled) {
             suppress_memory_tracking guard;
-            m_data->log_stat(key, value);
+            m_data->log_stat(std::move(key), value);
         }
     }
 
