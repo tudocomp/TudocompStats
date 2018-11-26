@@ -51,6 +51,9 @@ private:
     static uint16_t s_suppress_memory_tracking_state;
     static bool s_user_disabled_memory_tracking;
 
+    static bool s_init;
+    static void force_malloc_override_link();
+
     struct suppress_memory_tracking {
         inline suppress_memory_tracking(suppress_memory_tracking const&) = delete;
         inline suppress_memory_tracking() {
@@ -115,6 +118,11 @@ private:
 
     inline void init(std::string&& title) {
         suppress_memory_tracking guard;
+
+        if(!s_init) {
+            force_malloc_override_link();
+            s_init = true;
+        }
 
         m_parent = s_current;
 
