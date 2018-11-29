@@ -9,7 +9,6 @@
 
 #ifndef STATS_DISABLED
 
-#include <tudocomp_stat/PhaseData.hpp>
 #include <tudocomp_stat/StatPhaseExtension.hpp>
 
 #include <time.h>
@@ -21,6 +20,7 @@
 #endif
 
 namespace tdc {
+    using json = nlohmann::json;
 
 // Use clock_gettime in linux, clock_get_time in OS X.
 inline void get_monotonic_time(struct timespec *ts){
@@ -83,19 +83,15 @@ private:
 
     inline void track_alloc_internal(size_t bytes) {
         if(currently_tracking_memory()) {
-            if (!m_data) abort(); // better not use DCHECK, in case it allocates
-
-            m_data->mem_current += bytes;
-            m_data->mem_peak = std::max(m_data->mem_peak, m_data->mem_current);
+            m_mem.current += bytes;
+            m_mem.peak = std::max(m_mem.peak, m_mem.current);
             if(m_parent) m_parent->track_alloc_internal(bytes);
         }
     }
 
     inline void track_free_internal(size_t bytes) {
         if(currently_tracking_memory()) {
-            if (!m_data) abort(); // better not use DCHECK, in case it allocates
-
-            m_data->mem_current -= bytes;
+            m_mem.current -= bytes;
             if(m_parent) m_parent->track_free_internal(bytes);
         }
     }
@@ -130,7 +126,18 @@ private:
 
     static StatPhase* s_current;
     StatPhase* m_parent = nullptr;
-    std::unique_ptr<PhaseData> m_data;
+
+    struct {
+        double start, end;
+    } m_time;
+
+    struct {
+        ssize_t off, current, peak;
+    } m_mem;
+
+    std::string m_title;
+    json m_sub;
+    json m_stats;
 
     bool m_disabled = false;
 
@@ -151,52 +158,46 @@ private:
 
         m_parent = s_current;
 
-        m_data = std::make_unique<PhaseData>();
-        m_data->title(std::move(title));
-
-        m_data->mem_off = m_parent ? m_parent->m_data->mem_current : 0;
-        m_data->mem_current = 0;
-        m_data->mem_peak = 0;
-
-        m_data->time_end = 0;
-        m_data->time_start = current_time_millis();
+        m_title = std::move(title);
+        m_sub = json::array();
+        m_stats = json();
 
         // initialize extensions
         for(auto ctor : m_extension_registry) {
             m_extensions.emplace_back(ctor());
         }
 
+        // initialize basic data as the very last thing
+        m_mem.off = m_parent ? m_parent->m_mem.current : 0;
+        m_mem.current = 0;
+        m_mem.peak = 0;
+
+        m_time.end = 0;
+        m_time.start = current_time_millis();
+
+        // set as current
         s_current = this;
     }
 
     /// Finish the current Phase
-    ///
-    /// Returns a pointer to the PhaseData if it got added to a parent,
-    /// or null if there is no parent.
-    inline PhaseData* finish() {
-        m_data->time_end = current_time_millis();
-
+    inline void finish() {
         suppress_memory_tracking guard;
+
+        m_time.end = current_time_millis();
 
         // let extensions write data
         for(auto& ext : m_extensions) {
-            ext->write(*m_data);
+            ext->write(m_stats);
         }
 
-        PhaseData* r = nullptr;
-
         if(m_parent) {
-            // add data to parent's data
-            r = m_data.get();
-            m_parent->m_data->append_child(std::move(m_data));
-
             // propagate extensions to parent
             for(size_t i = 0; i < m_extensions.size(); i++) {
                 m_parent->m_extensions[i]->propagate(*m_extensions[i]);
             }
-        } else {
-            // if this was the root, delete data
-            m_data.reset();
+
+            // add data to parent's data
+            m_parent->m_sub.push_back(to_json());
         }
 
         // clear extensions
@@ -204,8 +205,6 @@ private:
 
         // pop parent
         s_current = m_parent;
-
-        return r;
     }
 
 public:
@@ -332,12 +331,10 @@ public:
     /// \param new_title the new phase title
     inline void split(std::string&& new_title) {
         if (!m_disabled) {
-            PhaseData* old_data = finish();
-
+            const ssize_t offs = m_mem.off + m_mem.current;
+            finish();
             init(std::move(new_title));
-            if(old_data) {
-                m_data->mem_off = old_data->mem_off + old_data->mem_current;
-            }
+            m_mem.off = offs;
         }
     }
 
@@ -349,15 +346,15 @@ public:
     /// \param key the statistic key or name
     /// \param value the value to log (will be converted to a string)
     template<typename T>
-    inline void log_stat(std::string&& key, const T& value) {
+    inline void log_stat(const std::string& key, const T& value) {
         if (!m_disabled) {
             suppress_memory_tracking guard;
-            m_data->log_stat(std::move(key), value);
+            m_stats[key] = value;
         }
     }
 
     inline const std::string& title() const {
-        return m_data->title();
+        return m_title;
     }
 
     /// \brief Constructs the JSON representation of the measured data.
@@ -368,14 +365,34 @@ public:
     inline json to_json() {
         suppress_memory_tracking guard;
         if (!m_disabled) {
-            m_data->time_end = current_time_millis();
+            m_time.end = current_time_millis();
 
             // let extensions write data
             for(auto& ext : m_extensions) {
-                ext->write(*m_data);
+                ext->write(m_stats);
             }
 
-            json obj = m_data->to_json();
+            json obj;
+            obj["title"] = m_title;
+            obj["timeStart"] = m_time.start;;
+            obj["timeEnd"] = m_time.end;
+            obj["memOff"] = m_mem.off;
+            obj["memPeak"] = m_mem.peak;
+            obj["memFinal"] = m_mem.current;
+            obj["sub"] = m_sub;
+
+            /*
+            obj["stats"] = m_stats; // TODO: opt into new format?
+            */
+            auto stats_array = json::array();
+            for(auto it = m_stats.begin(); it != m_stats.end(); it++) {
+                stats_array.push_back(json({
+                    {"key", it.key()},
+                    {"value", *it}
+                }));
+            }
+            obj["stats"] = stats_array;
+
             return obj;
         } else {
             return json();
