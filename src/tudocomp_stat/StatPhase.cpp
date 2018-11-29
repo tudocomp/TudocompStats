@@ -5,6 +5,9 @@
 
 using tdc::StatPhase;
 
+std::vector<std::function<StatPhase::ext_ptr_t()>>
+    StatPhase::m_extension_registry;
+
 StatPhase* StatPhase::s_current = nullptr;
 uint16_t StatPhase::s_suppress_memory_tracking_state = 0;
 bool StatPhase::s_user_disabled_memory_tracking = false;

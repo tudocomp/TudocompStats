@@ -10,6 +10,7 @@
 #ifndef STATS_DISABLED
 
 #include <tudocomp_stat/PhaseData.hpp>
+#include <tudocomp_stat/StatPhaseExtension.hpp>
 
 #include <time.h>
 #include <sys/time.h>
@@ -100,6 +101,30 @@ private:
     }
 
     //////////////////////////////////////////
+    // Extensions
+    //////////////////////////////////////////
+
+    using ext_ptr_t = std::unique_ptr<StatPhaseExtension>;
+    static std::vector<std::function<ext_ptr_t()>> m_extension_registry;
+
+public:
+    template<typename E>
+    static inline void register_extension() {
+        if(s_current != nullptr) {
+            throw std::runtime_error(
+                "Extensions must be registered outside of any "
+                "stat measurements!");
+        } else {
+            m_extension_registry.emplace_back([](){
+                return std::make_unique<E>();
+            });
+        }
+    }
+
+private:
+    std::vector<ext_ptr_t> m_extensions;
+
+    //////////////////////////////////////////
     // Other StatPhase state
     //////////////////////////////////////////
 
@@ -136,6 +161,11 @@ private:
         m_data->time_end = 0;
         m_data->time_start = current_time_millis();
 
+        // initialize extensions
+        for(auto ctor : m_extension_registry) {
+            m_extensions.emplace_back(ctor());
+        }
+
         s_current = this;
     }
 
@@ -147,16 +177,30 @@ private:
         m_data->time_end = current_time_millis();
 
         suppress_memory_tracking guard;
+
+        // let extensions write data
+        for(auto& ext : m_extensions) {
+            ext->write(*m_data);
+        }
+
         PhaseData* r = nullptr;
 
         if(m_parent) {
             // add data to parent's data
             r = m_data.get();
             m_parent->m_data->append_child(std::move(m_data));
+
+            // propagate extensions to parent
+            for(size_t i = 0; i < m_extensions.size(); i++) {
+                m_parent->m_extensions[i]->propagate(*m_extensions[i]);
+            }
         } else {
             // if this was the root, delete data
             m_data.reset();
         }
+
+        // clear extensions
+        m_extensions.clear();
 
         // pop parent
         s_current = m_parent;
@@ -312,6 +356,10 @@ public:
         }
     }
 
+    inline const std::string& title() const {
+        return m_data->title();
+    }
+
     /// \brief Constructs the JSON representation of the measured data.
     ///
     /// It contains the subtree of phases beneath this phase.
@@ -321,6 +369,12 @@ public:
         suppress_memory_tracking guard;
         if (!m_disabled) {
             m_data->time_end = current_time_millis();
+
+            // let extensions write data
+            for(auto& ext : m_extensions) {
+                ext->write(*m_data);
+            }
+
             json obj = m_data->to_json();
             return obj;
         } else {
