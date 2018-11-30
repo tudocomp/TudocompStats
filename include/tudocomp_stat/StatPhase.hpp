@@ -346,10 +346,10 @@ public:
     /// \param key the statistic key or name
     /// \param value the value to log (will be converted to a string)
     template<typename T>
-    inline void log_stat(const std::string& key, const T& value) {
+    inline void log_stat(std::string&& key, const T& value) {
         if (!m_disabled) {
             suppress_memory_tracking guard;
-            m_stats[key] = value;
+            m_stats[std::move(key)] = value;
         }
     }
 
