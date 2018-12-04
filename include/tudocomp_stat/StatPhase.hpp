@@ -137,7 +137,7 @@ public:
     }
 
 private:
-    std::vector<ext_ptr_t> m_extensions;
+    std::unique_ptr<std::vector<ext_ptr_t>> m_extensions;
 
     //////////////////////////////////////////
     // Other StatPhase state
@@ -157,8 +157,8 @@ private:
     } m_mem;
 
     std::string m_title;
-    json m_sub;
-    json m_stats;
+    std::unique_ptr<json> m_sub;
+    std::unique_ptr<json> m_stats;
 
     bool m_disabled = false;
 
@@ -180,12 +180,15 @@ private:
         m_parent = s_current;
 
         m_title = std::move(title);
-        m_sub = json::array();
-        m_stats = json();
+
+        // managed allocation of complex members
+        m_extensions = std::make_unique<std::vector<ext_ptr_t>>();
+        m_sub = std::make_unique<json>(json::array());
+        m_stats = std::make_unique<json>();
 
         // initialize extensions
         for(auto ctor : m_extension_registry) {
-            m_extensions.emplace_back(ctor());
+            m_extensions->emplace_back(ctor());
         }
 
         // initialize basic data as the very last thing
@@ -208,23 +211,25 @@ private:
         m_time.end = current_time_millis();
 
         // let extensions write data
-        for(auto& ext : m_extensions) {
-            ext->write(m_stats);
+        for(auto& ext : *m_extensions) {
+            ext->write(*m_stats);
         }
 
         if(m_parent) {
             // propagate extensions to parent
-            for(size_t i = 0; i < m_extensions.size(); i++) {
-                m_parent->m_extensions[i]->propagate(*m_extensions[i]);
+            for(size_t i = 0; i < m_extensions->size(); i++) {
+                (*(m_parent->m_extensions))[i]->propagate(*(*m_extensions)[i]);
             }
 
             // add data to parent's data
             m_parent->m_time.paused += m_time.paused;
-            m_parent->m_sub.push_back(to_json());
+            m_parent->m_sub->push_back(to_json());
         }
 
-        // clear extensions
-        m_extensions.clear();
+        // managed release of complex members
+        m_extensions.release();
+        m_sub.release();
+        m_stats.release();
 
         // pop parent
         s_current = m_parent;
@@ -234,14 +239,14 @@ private:
         m_pause_time = current_time_millis();
 
         // notify extensions
-        for(auto& ext : m_extensions) {
+        for(auto& ext : *m_extensions) {
             ext->pause();
         }
     }
 
     inline void on_resume_tracking() {
         // notify extensions
-        for(auto& ext : m_extensions) {
+        for(auto& ext : *m_extensions) {
             ext->resume();
         }
 
@@ -415,7 +420,7 @@ public:
     inline void log_stat(std::string&& key, const T& value) {
         if (!m_disabled) {
             suppress_memory_tracking guard;
-            m_stats[std::move(key)] = value;
+            (*m_stats)[std::move(key)] = value;
         }
     }
 
@@ -434,8 +439,8 @@ public:
             m_time.end = current_time_millis();
 
             // let extensions write data
-            for(auto& ext : m_extensions) {
-                ext->write(m_stats);
+            for(auto& ext : *m_extensions) {
+                ext->write(*m_stats);
             }
 
             json obj;
@@ -450,13 +455,13 @@ public:
             obj["memOff"] = m_mem.off;
             obj["memPeak"] = m_mem.peak;
             obj["memFinal"] = m_mem.current;
-            obj["sub"] = m_sub;
+            obj["sub"] = *m_sub;
 
             /*
             obj["stats"] = m_stats; // TODO: opt into new format?
             */
             auto stats_array = json::array();
-            for(auto it = m_stats.begin(); it != m_stats.end(); it++) {
+            for(auto it = m_stats->begin(); it != m_stats->end(); it++) {
                 stats_array.push_back(json({
                     {"key", it.key()},
                     {"value", *it}
