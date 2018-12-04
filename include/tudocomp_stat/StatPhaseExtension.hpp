@@ -20,7 +20,16 @@ public:
 
     /// \brief Propagates the data of a sub phase to this phase.
     /// \param ext the corresponding extension in the sub phase.
-    virtual void propagate(const StatPhaseExtension& sub) = 0;
+    virtual void propagate(const StatPhaseExtension& sub) {
+    }
+
+    /// \brief Notifies the extension that tracking is being paused explicitly.
+    virtual void pause() {
+    }
+
+    /// \brief Notifies the extension that paused tracking is being resumed.
+    virtual void resume() {
+    }
 };
 
 }

@@ -10,7 +10,7 @@ std::vector<std::function<StatPhase::ext_ptr_t()>>
 
 StatPhase* StatPhase::s_current = nullptr;
 uint16_t StatPhase::s_suppress_memory_tracking_state = 0;
-bool StatPhase::s_user_disabled_memory_tracking = false;
+uint16_t StatPhase::s_suppress_tracking_user_state = 0;
 
 bool StatPhase::s_init = false;
 void StatPhase::force_malloc_override_link() {

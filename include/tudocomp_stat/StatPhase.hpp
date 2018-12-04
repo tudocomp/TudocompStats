@@ -50,7 +50,7 @@ private:
     //////////////////////////////////////////
 
     static uint16_t s_suppress_memory_tracking_state;
-    static bool s_user_disabled_memory_tracking;
+    static uint16_t s_suppress_tracking_user_state;
 
     static bool s_init;
     static void force_malloc_override_link();
@@ -68,17 +68,36 @@ private:
         }
     };
 
-    inline void user_memory_pause() {
-        s_user_disabled_memory_tracking = true;
-    }
+    struct suppress_tracking_user {
+        inline static void inc() {
+            if(s_suppress_tracking_user_state++ == 0) {
+                if(s_current) s_current->on_pause_tracking();
+            }
+        }
+        inline static void dec() {
+            if(s_suppress_tracking_user_state == 1) {
+                if(s_current) s_current->on_resume_tracking();
+            }
+            --s_suppress_tracking_user_state;
+        }
 
-    inline void user_memory_resume() {
-        s_user_disabled_memory_tracking = false;
-    }
+        inline suppress_tracking_user() {
+            inc();
+        }
+        inline suppress_tracking_user(suppress_memory_tracking const&) = delete;
+        inline suppress_tracking_user(suppress_tracking_user&&) {
+        }
+        inline ~suppress_tracking_user() {
+            dec();
+        }
+        inline static bool is_paused() {
+            return s_suppress_tracking_user_state != 0;
+        }
+    };
 
     inline bool currently_tracking_memory() {
         return !suppress_memory_tracking::is_paused()
-            && !s_user_disabled_memory_tracking;
+            && !suppress_tracking_user::is_paused();
     }
 
     inline void track_alloc_internal(size_t bytes) {
@@ -127,8 +146,10 @@ private:
     static StatPhase* s_current;
     StatPhase* m_parent = nullptr;
 
+    double m_pause_time;
+
     struct {
-        double start, end;
+        double start, end, paused;
     } m_time;
 
     struct {
@@ -174,6 +195,7 @@ private:
 
         m_time.end = 0;
         m_time.start = current_time_millis();
+        m_time.paused = 0;
 
         // set as current
         s_current = this;
@@ -197,6 +219,7 @@ private:
             }
 
             // add data to parent's data
+            m_parent->m_time.paused += m_time.paused;
             m_parent->m_sub.push_back(to_json());
         }
 
@@ -205,6 +228,24 @@ private:
 
         // pop parent
         s_current = m_parent;
+    }
+
+    inline void on_pause_tracking() {
+        m_pause_time = current_time_millis();
+
+        // notify extensions
+        for(auto& ext : m_extensions) {
+            ext->pause();
+        }
+    }
+
+    inline void on_resume_tracking() {
+        // notify extensions
+        for(auto& ext : m_extensions) {
+            ext->resume();
+        }
+
+        m_time.paused += current_time_millis() - m_pause_time;
     }
 
 public:
@@ -275,16 +316,41 @@ public:
     ///
     /// Memory tracking is paused until \ref pause_tracking is called or the
     /// phase object is destroyed.
+    [[deprecated("Use suppress_tracking")]]
     inline static void pause_tracking() {
-        if(s_current) s_current->user_memory_pause();
+        suppress_tracking_user::inc();
     }
 
     /// \brief Resumes the tracking of memory allocations in the current phase.
     ///
     /// This only has an effect if tracking has previously been paused using
     /// \ref pause_tracking.
+    [[deprecated("Use suppress_tracking")]]
     inline static void resume_tracking() {
-        if(s_current) s_current->user_memory_resume();
+        suppress_tracking_user::dec();
+    }
+
+    /// \brief Creates a guard that suppresses tracking as long as it exists.
+    ///
+    /// This should be used during more complex logging activity in order
+    /// for it to not count against memory measures.
+    inline static auto suppress_tracking() {
+        return suppress_tracking_user();
+    }
+
+    /// \brief Suppress tracking while exeucting the lambda.
+    ///
+    /// This should be used during more complex logging activity in order
+    /// for it to not count against memory measures.
+    ///
+    /// \param func  the lambda to execute
+    /// \return the return value of the lambda
+    template<typename F>
+    inline static auto suppress_tracking(F func) ->
+        typename std::result_of<F()>::type {
+
+        suppress_tracking_user guard;
+        return func();
     }
 
     /// \brief Logs a user statistic for the current phase.
@@ -299,7 +365,7 @@ public:
         if(s_current) s_current->log_stat(std::move(key), value);
     }
 
-    /// \brief Creates a inert statistics phase without any effect.
+    /// \brief Creates an inert statistics phase without any effect.
     inline StatPhase() {
         m_disabled = true;
     }
@@ -374,8 +440,13 @@ public:
 
             json obj;
             obj["title"] = m_title;
-            obj["timeStart"] = m_time.start;;
+            obj["timeStart"] = m_time.start;
             obj["timeEnd"] = m_time.end;
+            obj["timePaused"] = m_time.paused;
+
+            const double dt = m_time.end - m_time.start;
+            obj["timeDelta"] = dt;
+            obj["timeRun"] = dt - m_time.paused;
             obj["memOff"] = m_mem.off;
             obj["memPeak"] = m_mem.peak;
             obj["memFinal"] = m_mem.current;
