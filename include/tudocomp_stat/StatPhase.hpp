@@ -9,7 +9,7 @@
 
 #ifndef STATS_DISABLED
 
-#include <tudocomp_stat/PhaseData.hpp>
+#include <tudocomp_stat/StatPhaseExtension.hpp>
 
 #include <time.h>
 #include <sys/time.h>
@@ -20,6 +20,7 @@
 #endif
 
 namespace tdc {
+    using json = nlohmann::json;
 
 // Use clock_gettime in linux, clock_get_time in OS X.
 inline void get_monotonic_time(struct timespec *ts){
@@ -49,7 +50,7 @@ private:
     //////////////////////////////////////////
 
     static uint16_t s_suppress_memory_tracking_state;
-    static bool s_user_disabled_memory_tracking;
+    static uint16_t s_suppress_tracking_user_state;
 
     static bool s_init;
     static void force_malloc_override_link();
@@ -67,37 +68,76 @@ private:
         }
     };
 
-    inline void user_memory_pause() {
-        s_user_disabled_memory_tracking = true;
-    }
+    struct suppress_tracking_user {
+        inline static void inc() {
+            if(s_suppress_tracking_user_state++ == 0) {
+                if(s_current) s_current->on_pause_tracking();
+            }
+        }
+        inline static void dec() {
+            if(s_suppress_tracking_user_state == 1) {
+                if(s_current) s_current->on_resume_tracking();
+            }
+            --s_suppress_tracking_user_state;
+        }
 
-    inline void user_memory_resume() {
-        s_user_disabled_memory_tracking = false;
-    }
+        inline suppress_tracking_user() {
+            inc();
+        }
+        inline suppress_tracking_user(suppress_memory_tracking const&) = delete;
+        inline suppress_tracking_user(suppress_tracking_user&&) {
+        }
+        inline ~suppress_tracking_user() {
+            dec();
+        }
+        inline static bool is_paused() {
+            return s_suppress_tracking_user_state != 0;
+        }
+    };
 
     inline bool currently_tracking_memory() {
         return !suppress_memory_tracking::is_paused()
-            && !s_user_disabled_memory_tracking;
+            && !suppress_tracking_user::is_paused();
     }
 
     inline void track_alloc_internal(size_t bytes) {
         if(currently_tracking_memory()) {
-            if (!m_data) abort(); // better not use DCHECK, in case it allocates
-
-            m_data->mem_current += bytes;
-            m_data->mem_peak = std::max(m_data->mem_peak, m_data->mem_current);
+            m_mem.current += bytes;
+            m_mem.peak = std::max(m_mem.peak, m_mem.current);
             if(m_parent) m_parent->track_alloc_internal(bytes);
         }
     }
 
     inline void track_free_internal(size_t bytes) {
         if(currently_tracking_memory()) {
-            if (!m_data) abort(); // better not use DCHECK, in case it allocates
-
-            m_data->mem_current -= bytes;
+            m_mem.current -= bytes;
             if(m_parent) m_parent->track_free_internal(bytes);
         }
     }
+
+    //////////////////////////////////////////
+    // Extensions
+    //////////////////////////////////////////
+
+    using ext_ptr_t = std::unique_ptr<StatPhaseExtension>;
+    static std::vector<std::function<ext_ptr_t()>> m_extension_registry;
+
+public:
+    template<typename E>
+    static inline void register_extension() {
+        if(s_current != nullptr) {
+            throw std::runtime_error(
+                "Extensions must be registered outside of any "
+                "stat measurements!");
+        } else {
+            m_extension_registry.emplace_back([](){
+                return std::make_unique<E>();
+            });
+        }
+    }
+
+private:
+    std::unique_ptr<std::vector<ext_ptr_t>> m_extensions;
 
     //////////////////////////////////////////
     // Other StatPhase state
@@ -105,7 +145,20 @@ private:
 
     static StatPhase* s_current;
     StatPhase* m_parent = nullptr;
-    std::unique_ptr<PhaseData> m_data;
+
+    double m_pause_time;
+
+    struct {
+        double start, end, paused;
+    } m_time;
+
+    struct {
+        ssize_t off, current, peak;
+    } m_mem;
+
+    std::string m_title;
+    std::unique_ptr<json> m_sub;
+    std::unique_ptr<json> m_stats;
 
     bool m_disabled = false;
 
@@ -126,42 +179,78 @@ private:
 
         m_parent = s_current;
 
-        m_data = std::make_unique<PhaseData>();
-        m_data->title(std::move(title));
+        m_title = std::move(title);
 
-        m_data->mem_off = m_parent ? m_parent->m_data->mem_current : 0;
-        m_data->mem_current = 0;
-        m_data->mem_peak = 0;
+        // managed allocation of complex members
+        m_extensions = std::make_unique<std::vector<ext_ptr_t>>();
+        m_sub = std::make_unique<json>(json::array());
+        m_stats = std::make_unique<json>();
 
-        m_data->time_end = 0;
-        m_data->time_start = current_time_millis();
+        // initialize extensions
+        for(auto ctor : m_extension_registry) {
+            m_extensions->emplace_back(ctor());
+        }
 
+        // initialize basic data as the very last thing
+        m_mem.off = m_parent ? m_parent->m_mem.current : 0;
+        m_mem.current = 0;
+        m_mem.peak = 0;
+
+        m_time.end = 0;
+        m_time.start = current_time_millis();
+        m_time.paused = 0;
+
+        // set as current
         s_current = this;
     }
 
     /// Finish the current Phase
-    ///
-    /// Returns a pointer to the PhaseData if it got added to a parent,
-    /// or null if there is no parent.
-    inline PhaseData* finish() {
-        m_data->time_end = current_time_millis();
-
+    inline void finish() {
         suppress_memory_tracking guard;
-        PhaseData* r = nullptr;
+
+        m_time.end = current_time_millis();
+
+        // let extensions write data
+        for(auto& ext : *m_extensions) {
+            ext->write(*m_stats);
+        }
 
         if(m_parent) {
+            // propagate extensions to parent
+            for(size_t i = 0; i < m_extensions->size(); i++) {
+                (*(m_parent->m_extensions))[i]->propagate(*(*m_extensions)[i]);
+            }
+
             // add data to parent's data
-            r = m_data.get();
-            m_parent->m_data->append_child(std::move(m_data));
-        } else {
-            // if this was the root, delete data
-            m_data.reset();
+            m_parent->m_time.paused += m_time.paused;
+            m_parent->m_sub->push_back(to_json());
         }
+
+        // managed release of complex members
+        m_extensions.release();
+        m_sub.release();
+        m_stats.release();
 
         // pop parent
         s_current = m_parent;
+    }
 
-        return r;
+    inline void on_pause_tracking() {
+        m_pause_time = current_time_millis();
+
+        // notify extensions
+        for(auto& ext : *m_extensions) {
+            ext->pause();
+        }
+    }
+
+    inline void on_resume_tracking() {
+        // notify extensions
+        for(auto& ext : *m_extensions) {
+            ext->resume();
+        }
+
+        m_time.paused += current_time_millis() - m_pause_time;
     }
 
 public:
@@ -232,16 +321,41 @@ public:
     ///
     /// Memory tracking is paused until \ref pause_tracking is called or the
     /// phase object is destroyed.
+    [[deprecated("Use suppress_tracking")]]
     inline static void pause_tracking() {
-        if(s_current) s_current->user_memory_pause();
+        suppress_tracking_user::inc();
     }
 
     /// \brief Resumes the tracking of memory allocations in the current phase.
     ///
     /// This only has an effect if tracking has previously been paused using
     /// \ref pause_tracking.
+    [[deprecated("Use suppress_tracking")]]
     inline static void resume_tracking() {
-        if(s_current) s_current->user_memory_resume();
+        suppress_tracking_user::dec();
+    }
+
+    /// \brief Creates a guard that suppresses tracking as long as it exists.
+    ///
+    /// This should be used during more complex logging activity in order
+    /// for it to not count against memory measures.
+    inline static auto suppress_tracking() {
+        return suppress_tracking_user();
+    }
+
+    /// \brief Suppress tracking while exeucting the lambda.
+    ///
+    /// This should be used during more complex logging activity in order
+    /// for it to not count against memory measures.
+    ///
+    /// \param func  the lambda to execute
+    /// \return the return value of the lambda
+    template<typename F>
+    inline static auto suppress_tracking(F func) ->
+        typename std::result_of<F()>::type {
+
+        suppress_tracking_user guard;
+        return func();
     }
 
     /// \brief Logs a user statistic for the current phase.
@@ -256,7 +370,7 @@ public:
         if(s_current) s_current->log_stat(std::move(key), value);
     }
 
-    /// \brief Creates a inert statistics phase without any effect.
+    /// \brief Creates an inert statistics phase without any effect.
     inline StatPhase() {
         m_disabled = true;
     }
@@ -288,12 +402,10 @@ public:
     /// \param new_title the new phase title
     inline void split(std::string&& new_title) {
         if (!m_disabled) {
-            PhaseData* old_data = finish();
-
+            const ssize_t offs = m_mem.off + m_mem.current;
+            finish();
             init(std::move(new_title));
-            if(old_data) {
-                m_data->mem_off = old_data->mem_off + old_data->mem_current;
-            }
+            m_mem.off = offs;
         }
     }
 
@@ -308,8 +420,12 @@ public:
     inline void log_stat(std::string&& key, const T& value) {
         if (!m_disabled) {
             suppress_memory_tracking guard;
-            m_data->log_stat(std::move(key), value);
+            (*m_stats)[std::move(key)] = value;
         }
+    }
+
+    inline const std::string& title() const {
+        return m_title;
     }
 
     /// \brief Constructs the JSON representation of the measured data.
@@ -320,8 +436,39 @@ public:
     inline json to_json() {
         suppress_memory_tracking guard;
         if (!m_disabled) {
-            m_data->time_end = current_time_millis();
-            json obj = m_data->to_json();
+            m_time.end = current_time_millis();
+
+            // let extensions write data
+            for(auto& ext : *m_extensions) {
+                ext->write(*m_stats);
+            }
+
+            json obj;
+            obj["title"] = m_title;
+            obj["timeStart"] = m_time.start;
+            obj["timeEnd"] = m_time.end;
+            obj["timePaused"] = m_time.paused;
+
+            const double dt = m_time.end - m_time.start;
+            obj["timeDelta"] = dt;
+            obj["timeRun"] = dt - m_time.paused;
+            obj["memOff"] = m_mem.off;
+            obj["memPeak"] = m_mem.peak;
+            obj["memFinal"] = m_mem.current;
+            obj["sub"] = *m_sub;
+
+            /*
+            obj["stats"] = m_stats; // TODO: opt into new format?
+            */
+            auto stats_array = json::array();
+            for(auto it = m_stats->begin(); it != m_stats->end(); it++) {
+                stats_array.push_back(json({
+                    {"key", it.key()},
+                    {"value", *it}
+                }));
+            }
+            obj["stats"] = stats_array;
+
             return obj;
         } else {
             return json();
