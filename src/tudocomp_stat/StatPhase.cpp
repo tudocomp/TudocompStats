@@ -13,6 +13,9 @@ uint16_t StatPhase::s_suppress_memory_tracking_state = 0;
 uint16_t StatPhase::s_suppress_tracking_user_state = 0;
 
 bool StatPhase::s_init = false;
+
+#ifndef MALLOC_DISABLED
+
 void StatPhase::force_malloc_override_link() {
     // Make sure the malloc override is actually linked into the using program.
     //
@@ -38,5 +41,12 @@ void malloc_callback::on_alloc(size_t bytes) {
 void malloc_callback::on_free(size_t bytes) {
     StatPhase::track_free(bytes);
 }
+
+#else
+
+void StatPhase::force_malloc_override_link() {
+}
+
+#endif
 
 #endif

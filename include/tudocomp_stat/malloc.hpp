@@ -6,6 +6,7 @@
 
 #include <cstdlib>
 
+#ifndef MALLOC_DISABLED
 #ifndef STATS_DISABLED
 
 /// \cond INTERNAL
@@ -26,3 +27,5 @@ extern "C" void* __libc_realloc(void*, size_t);
 
 #endif
 #endif
+#endif
+

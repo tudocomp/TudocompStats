@@ -2,6 +2,7 @@
 
 #include <cstring>
 
+#ifndef MALLOC_DISABLED
 #ifdef __CYGWIN__
 
 #pragma message("malloc overrides are not supported on Cygwin.")
@@ -86,3 +87,5 @@ extern "C" void* calloc(size_t num, size_t size) {
 #endif
 
 #endif
+#endif
+
