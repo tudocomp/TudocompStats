@@ -1,0 +1,3 @@
+[submodule "submodules/build_system"]
+	path = submodules/build_system
+	url = https://github.com/tudocomp/build_system

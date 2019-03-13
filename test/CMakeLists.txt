@@ -1,3 +1,4 @@
-include(test/testsuite.cmake)
+include(tdc_testsuite)
 
-run_test(tudostats DEPS tudocomp_stat)
+run_test(tudostats DEPS ${TDC_TEST_DEPS} tudocomp_stat)
+
