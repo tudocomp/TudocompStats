@@ -6,10 +6,10 @@ project(TudocompStats)
 # We do this in case we want to use this repo as a GIT submodule,
 # because then we only need the source files themselves
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
-    set(STANDALONE 1)
+    set(TUDOSTATS_STANDALONE 1)
 endif()
 
-if(STANDALONE)
+if(TUDOSTATS_STANDALONE)
     # init build system
     execute_process(COMMAND git submodule update --init -- build_system
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/submodules)
@@ -63,7 +63,7 @@ endif()
 
 target_include_directories(tudocomp_stat PUBLIC include)
 
-if(STANDALONE)
+if(TUDOSTATS_STANDALONE)
     # Unit tests
     add_subdirectory(test)
 
