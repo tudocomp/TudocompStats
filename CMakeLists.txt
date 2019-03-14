@@ -20,6 +20,12 @@ if(STANDALONE)
     # downloadable dependencies
     include(depend_glog)
 
+    # quit if dependencies aren't met
+    tdc_check_hard_deps()
+    if(TDC_DEPS_MISSING)
+        return()
+    endif()
+
     # soft dependencies
     include(softdepend_gtest)
 
@@ -63,8 +69,5 @@ if(STANDALONE)
 
     # Disclaimer
     MESSAGE(STATUS "Built Type: " ${CMAKE_BUILD_TYPE} )
-
-    # finish
-    include(tdc_finish)
 endif()
 
