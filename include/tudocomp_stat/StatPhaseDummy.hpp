@@ -12,6 +12,7 @@ namespace tdc {
 // same public interface as StatPhase, but doesn't do anything
 // used for STATS_DISABLED
 class StatPhaseDummy {
+    using json = nlohmann::json;
 public:
     inline StatPhaseDummy() {
     }
